@@ -4,13 +4,6 @@ format: html
 editor: visual
 ---
 
-## Quarto
-
-Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
-
-## Running Code
-
-When you click the **Render** button a document will be generated that includes both content and the output of embedded code. You can embed code like this:
 
 ```{r Library}
 
@@ -19,22 +12,141 @@ library(tidyverse)
 library(skimr)
 library(corrplot)
 
+train <- read.csv("train.csv")
+test <- read.csv("test.csv")
 
 
 ```
 
+## Initial review of the data
+
+
+We need to predict a categorical variable (multiclass) : Multiclass classification or multinomial classification. We need to filter out binary classification algorithm. 
+
+There are 3 approaches to do that : 
+
+1. Transformation to binary : One vs rest and/or one vs one methods, the multi-class problem is broken down into multiple binary problems
+
+- One vs rest : you train a classifier where your class is positive and all others are negative
+
+
+2. Extension from binary : Neural networs, extreme learning machines, K-nearest neighbors, Naive Bayes, Decision trees, support vector machines, multi expression programming 
+
+3. Hierarchical classification : Tree methods 
+
+
+Cross-validation :  Large dataset of 10 000 observations : lets see how we want to do validation 
 
 
 
-```{r}
-1 + 1
+Numerical values : 
+
+- WE might be better served with a garage dummy, and patio and porch feature dummy ?
+
+
+Text variable : Use key word search to create new dummy variables
+
+- Renovation : remodel, redone
+
+- Luxury : walk-in closet, quartz, farmhouse, entertaining, master bath
+
+- Inside feature :  HVAC, 
+
+- Outside feature : pool, open-floor, firepit, shed
+
+
+```{r Reading files}
+
+fix_windows_histograms()
+skim(train)
+
+
 ```
 
-You can add options to executable code like this
+### Correlation
 
-```{r}
-#| echo: false
-2 * 2
+Ideas : 
+
+- Interaction between home type and garage space : having access to a garage is likely more important for single-family homes (interact term)
+
+- Interaction between home type and avgSchool rating : more likely to be important for SF homes which more likely have children 
+
+- AverageSchool rating and MedianStudents looks correlated : worse school seems to have access to more teachers - might not need to keep both
+
+Corr Plot : 
+
+- Longitude and schoold rating and median student - is negatively 
+- Schoold rating and MEdian Student
+- Number of bedrooms and bathroom : of course 
+- Year built and bathrooms : newer houses have more bathrooms
+- School rating is correlated to number of rooms and bathroom : wealth indicator
+
+```{r correlation}
+
+train_numeric <- 
+    train %>% select_if(is.numeric)
+
+train_corr <- cor(train_numeric, use="complete.obs")
+corrplot(train_corr)
+
+
 ```
 
-The `echo: false` option disables the printing of code (only output is displayed).
+### Link with outcomes 
+
+The price range are no super unbalanced, I have at least 1000 observations in each category. We'll see if we need to downsample. 
+
+
+- Lot size and Garage Space probably won't be important predictors
+
+- Number of Bedroom and Bedroom will
+
+
+Categorical variables 
+
+- Family
+
+```{r outcome}
+
+train %>% 
+  count(priceRange)
+
+
+plot_numeric <- function(var,title) {
+  
+  train %>% 
+  group_by(priceRange) %>% 
+    summarize(average = mean({{ var }})) %>% 
+    ggplot(aes(x=priceRange, y=average)) + 
+    geom_col() +  
+    scale_x_discrete(guide = guide_axis(n.dodge=2))+
+    labs(title=title)
+  
+}
+
+(plot_numeric(avgSchoolRating, "School rating") + plot_numeric(lotSizeSqFt,"Lot Size")) /
+(plot_numeric(numOfBathrooms, "# Bathrooms") + plot_numeric(garageSpaces,"Garage Space"))
+
+
+train %>% 
+      count(priceRange,homeType) %>% 
+      group_by(homeType) %>% 
+      mutate(proportion = n/sum(n)) %>% 
+      ggplot(aes(x=priceRange,y=proportion)) +
+      geom_col() +
+      facet_wrap(~homeType,nrow=2) +
+   scale_x_discrete(guide = guide_axis(n.dodge=2))
+
+
+train %>% 
+  count(priceRange,hasSpa) %>% 
+  group_by(priceRange) %>% 
+  mutate(proportion = n / sum(n)) %>% 
+    ggplot(aes(x=hasSpa, y=proportion)) +
+    geom_col() +
+     facet_wrap(~priceRange, nrow = 2) 
+  
+  
+
+    
+```
