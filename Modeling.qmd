@@ -260,14 +260,15 @@ recipe_base_mod <-
     
 ```
 
-k-Nearest Neighbors
+k-Nearest Neighbors : needs center and scaled numeric values because it compute distances 
+
+
 Decision Trees
 Naive Bayes
 Random Forest
 Gradient Boosting
 
 Logistic Regression : 
-
 
 Support Vector Machine
 
@@ -279,20 +280,23 @@ set.seed(501)
 folds <- vfold_cv(train, v = 5, strata = priceRange)
 
 
-logistic_model <-
-  logistic_reg() %>%
-  set_engine('glm')
+multinom_model <-
+  multinom_reg(penalty = tune(), mixture = tune()) %>%
+  set_engine('glmnet')
 
-logistic_wflow <- 
+multinom_wflow <- 
             workflow() %>% 
               add_recipe(recipe_base) %>% 
-              add_model(logistic_model)
+              add_model(multinom_model)
 
-logistic_fit <- 
-  logistic_wflow %>% 
+multinom_fit <- 
+  multinom_wflow %>% 
       fit(data=train)
 
-logistic_result <- predict(logistic_fit,new_data = test)
+multinom_result <- 
+  multinom_wflow %>% 
+    tune_grid() %>% 
+          fit_resamples(folds,control_resamples(save_pred = TRUE, save_workflow = TRUE))
 
 # logistic_result <- 
 #   logistic_wflow %>% 
@@ -314,8 +318,7 @@ knn_wflow <-
 
 knn_res <- 
       knn_wflow %>% 
-      fit_resamples(folds, 
-                    control=control_resamples(save_pred = TRUE, save_workflow = TRUE))
+      fit_resamples(folds)
 
 # knn_fit <- 
 #   knn_wflow %>% 
