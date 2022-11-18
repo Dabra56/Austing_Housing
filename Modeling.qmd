@@ -11,6 +11,7 @@ library(tidymodels)
 library(tidyverse)
 library(skimr)
 library(corrplot)
+library(patchwork)
 
 train <- read.csv("train.csv")
 test <- read.csv("test.csv")
@@ -104,7 +105,9 @@ The price range are no super unbalanced, I have at least 1000 observations in ea
 
 Categorical variables 
 
-- Family
+- Very little condo, apparment or multioccupancy in expensive housing. More multifamily, single family and vacant land
+
+- More spas in more expensive homes, but still not that big of a difference 
 
 ```{r outcome}
 
@@ -164,7 +167,192 @@ train %>%
     ggplot(aes(x=hasSpa, y=proportion)) +
     geom_col() +
      facet_wrap(~priceRange, nrow = 2) 
-  
 
     
 ```
+
+Geography : 
+
+
+
+
+```{r geographical plot}
+
+# Code does not work... 
+
+# price_plot <-
+#   train %>%
+#   mutate(priceRange = parse_number(priceRange)) %>%
+#   ggplot(aes(longitude, latitude, z = priceRange)) +
+#   stat_summary_hex(alpha = 0.8, bins = 50) +
+#   scale_fill_viridis_c() +
+#   labs(
+#     fill = "mean",
+#     title = "Price"
+#   )
+# 
+# plot_austin <- function(var, title) {
+#   train %>%
+#     ggplot(aes(longitude, latitude, z = {{ var }})) +
+#     stat_summary_hex(alpha = 0.8, bins = 50) +
+#     scale_fill_viridis_c() +
+#     labs(
+#       fill = "mean",
+#       title = title
+#     )
+# }
+# 
+# (price_plot + plot_austin(avgSchoolRating, "School rating")) /
+#   (plot_austin(yearBuilt, "Year built") + plot_austin(log(lotSizeSqFt), "Lot size (log)"))
+
+    
+```
+
+Recipe : 
+
+Zero variance, 
+No NA to take care off
+Turn factor into dummy 
+Normalize values
+Interaction factor 
+
+
+- Interaction between home type and garage space : having access to a garage is likely more important for single-family homes (interact term)
+
+- Interaction between home type and avgSchool rating : more likely to be important for SF homes which more likely have children 
+
+
+
+
+
+```{r recipe}
+
+
+
+test <- 
+  test %>% 
+    select(-uid,-description,-latitude,-longitude)
+
+recipe_base <- 
+        recipe(priceRange ~ ., data=train) %>% 
+        step_other(homeType, threshold = 0.02) %>% 
+        step_zv(all_predictors()) %>% 
+        step_normalize(all_numeric_predictors()) %>%
+        step_dummy(all_nominal_predictors()) %>% 
+        
+
+train_mod <-  
+  train %>% 
+        mutate(bedrooms_bathrooms = numOfBathrooms+numOfBedrooms) %>% 
+    select(-MedianStudentsPerTeacher,-numOfBedrooms,-numOfBathrooms)  
+
+recipe_interact <- 
+      recipe_base %>% 
+          step_interact(terms = ~homeType:garageSpaces,
+                                ~homeType:avgSchoolRating)
+
+recipe_base_mod <- 
+  recipe(priceRange ~ ., data=train_mod) %>% 
+        step_other(homeType, threshold = 0.02) %>% 
+        step_zv(all_predictors()) %>% 
+        step_normalize(all_numeric_predictors()) %>%
+        step_dummy(all_nominal_predictors())
+    
+```
+
+k-Nearest Neighbors
+Decision Trees
+Naive Bayes
+Random Forest
+Gradient Boosting
+
+Logistic Regression : 
+
+
+Support Vector Machine
+
+```{r Models}
+
+set.seed(501)
+# 
+
+folds <- vfold_cv(train, v = 5, strata = priceRange)
+
+
+logistic_model <-
+  logistic_reg() %>%
+  set_engine('glm')
+
+logistic_wflow <- 
+            workflow() %>% 
+              add_recipe(recipe_base) %>% 
+              add_model(logistic_model)
+
+logistic_fit <- 
+  logistic_wflow %>% 
+      fit(data=train)
+
+logistic_result <- predict(logistic_fit,new_data = test)
+
+# logistic_result <- 
+#   logistic_wflow %>% 
+#   fit_resamples(resamples= folds, control = control_resamples(save_pred = TRUE, save_workflow = TRUE))
+
+# logistic_metrics <- collect_metrics(logistic_result)
+
+
+knn_model <-
+  nearest_neighbor(neighbors = tune(), weight_func = tune(), dist_power = tune()) %>%
+  set_engine('kknn') %>%
+  set_mode('classification')
+
+knn_wflow <- 
+          workflow() %>% 
+          add_recipe(recipe_base) %>% 
+          add_model(knn_model)
+
+
+knn_res <- 
+      knn_wflow %>% 
+      fit_resamples(folds, 
+                    control=control_resamples(save_pred = TRUE, save_workflow = TRUE))
+
+# knn_fit <- 
+#   knn_wflow %>% 
+#       fit(data=train)
+
+knn_result <- predict(knn_fit,new_data = test)
+
+
+
+
+
+rand_forest_randomForest_spec <-
+  rand_forest(mtry = tune(), min_n = tune()) %>%
+  set_engine('randomForest') %>%
+  set_mode('classification')
+
+
+naive_Bayes_naivebayes_spec <-
+  naive_Bayes(smoothness = tune(), Laplace = tune()) %>%
+  set_engine('naivebayes')
+
+nearest_neighbor_kknn_spec <-
+  nearest_neighbor(neighbors = tune(), weight_func = tune(), dist_power = tune()) %>%
+  set_engine('kknn') %>%
+  set_mode('classification')
+
+boost_tree_xgboost_spec <-
+  boost_tree(tree_depth = tune(), trees = tune(), learn_rate = tune(), min_n = tune(), loss_reduction = tune(), sample_size = tune(), stop_iter = tune()) %>%
+  set_engine('xgboost') %>%
+  set_mode('classification')
+
+
+
+
+
+                             
+    
+```
+
+
